@@ -53,8 +53,9 @@ func TestRenderFlClash(t *testing.T) {
 	for _, want := range []string{
 		`server: "xx.example.com"`,
 		`name: "测试节点 \"A\""`,
-		`proxies: ["测试节点 \"A\"", 自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄]`,
-		`{name: 自建/家宽节点, type: select, proxies: ["测试节点 \"A\"", 全球直连]`,
+		`{name: 节点选择, type: select, proxies: [自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄]`,
+		`{name: 自建/家宽节点, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))"`,
+		`{name: 反重力, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))"`,
 		`uuid: "12345678-1234-1234-1234-1234567890ab"`,
 		`public-key: "public-key"`,
 		`short-id: "0123456789abcdef"`,

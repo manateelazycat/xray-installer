@@ -208,13 +208,13 @@ proxies:
 
 # 策略组
 proxy-groups:
-  - {name: 节点选择, type: select, proxies: [{{ q .NodeName }}, 自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/select.png"}
-  - {name: 自建/家宽节点, type: select, proxies: [{{ q .NodeName }}, 全球直连], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
+  - {name: 节点选择, type: select, proxies: [自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/select.png"}
+  - {name: 自建/家宽节点, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
   - {name: STEAM, type: select, <<: *Proxy_first, icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/steam.png"}
   - {name: 全球直连, type: select, proxies: [🟢 直连, 🔗 代理], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/direct.png"}
   - {name: 隐私拦截, type: select, proxies: [🚫 拒绝, ⚪ 丢弃, 🟢 直连, 🔗 代理], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/block.png"}
   - {name: Final, type: select, <<: *Include_all, icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/final.png"}
-  - {name: 反重力, type: select, proxies: [{{ q .NodeName }}, 全球直连], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
+  - {name: 反重力, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
   - {name: 全部节点, type: select, include-all: true, tolerance: 20, interval: 300, exclude-filter: "(?i)(🟢 直连)", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/all.png"}
 # 功能型代理组默认隐藏 start
   - {name: "🔗 代理", type: select, hidden: true, proxies: [节点选择]}
