@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
@@ -35,10 +35,10 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
@@ -62,7 +62,7 @@ jobs:
           rm -f dist/xray-installer
 
       - name: Upload archive artifact
-        uses: actions/upload-artifact@v8
+        uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.arch }}
           path: dist/*.tar.gz
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
