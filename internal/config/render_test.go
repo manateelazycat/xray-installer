@@ -51,11 +51,14 @@ func TestRenderFlClash(t *testing.T) {
 
 	text := string(data)
 	for _, want := range []string{
-		`server: "xx.example.com"`,
+		"##############################################",
+		`server: xx.example.com`,
+		`servername: www.microsoft.com`,
 		`name: "测试节点 \"A\""`,
 		`{name: 节点选择, type: select, proxies: [自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄]`,
 		`{name: 自建/家宽节点, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))"`,
 		`{name: 反重力, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))"`,
+		`{name: 🔗 代理, type: select, hidden: true, proxies: [节点选择]}`,
 		`uuid: "12345678-1234-1234-1234-1234567890ab"`,
 		`public-key: "public-key"`,
 		`short-id: "0123456789abcdef"`,
@@ -68,7 +71,7 @@ func TestRenderFlClash(t *testing.T) {
 		}
 	}
 
-	for _, bad := range []string{"{{ .Domain }}", "{{ .UUID }}", "{{ .PublicKey }}", "{{ .ShortID }}"} {
+	for _, bad := range []string{"{{ .Domain }}", "{{ .UUID }}", "{{ .PublicKey }}", "{{ .ShortID }}", `server: "xx.example.com"`, `servername: "www.microsoft.com"`, `{name: "🔗 代理"`} {
 		if strings.Contains(text, bad) {
 			t.Fatalf("rendered flclash config still contains placeholder %q", bad)
 		}
