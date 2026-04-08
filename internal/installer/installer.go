@@ -79,7 +79,7 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 	}
 
 	i.step("运行安装前检查")
-	publicIP, err := i.preflight(ctx, domain, !req.DryRun)
+	publicIP, err := i.preflight(ctx, !req.DryRun)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (i *Installer) Uninstall(ctx context.Context, dryRun bool) error {
 	return nil
 }
 
-func (i *Installer) preflight(ctx context.Context, domain string, requireRoot bool) (string, error) {
+func (i *Installer) preflight(ctx context.Context, requireRoot bool) (string, error) {
 	if runtime.GOOS != "linux" {
 		return "", errors.New("only Linux is supported")
 	}
@@ -282,10 +282,7 @@ func (i *Installer) preflight(ctx context.Context, domain string, requireRoot bo
 	if err != nil {
 		return "", err
 	}
-	if err := domainPointsToIP(domain, publicIP); err != nil {
-		return "", err
-	}
-	if err := ensurePort443Available(ctx); err != nil {
+	if err := i.ensurePort443Available(ctx); err != nil {
 		return "", err
 	}
 
@@ -516,39 +513,20 @@ func detectPublicIPv4(ctx context.Context) (string, error) {
 	return "", errors.New("unable to detect public IPv4 from external services")
 }
 
-func domainPointsToIP(domain, publicIP string) error {
-	ips, err := net.LookupIP(domain)
-	if err != nil {
-		return fmt.Errorf("lookup domain %s: %w", domain, err)
-	}
-
-	for _, ip := range ips {
-		if v4 := ip.To4(); v4 != nil && v4.String() == publicIP {
-			return nil
-		}
-	}
-
-	var resolved []string
-	for _, ip := range ips {
-		if v4 := ip.To4(); v4 != nil {
-			resolved = append(resolved, v4.String())
-		}
-	}
-
-	if len(resolved) == 0 {
-		return fmt.Errorf("domain %s does not currently resolve to an IPv4 address; if you use Cloudflare, make sure the record is DNS Only", domain)
-	}
-
-	return fmt.Errorf("domain %s resolves to %s, but this VPS public IP is %s; fix the A record first", domain, strings.Join(resolved, ", "), publicIP)
-}
-
-func ensurePort443Available(ctx context.Context) error {
-	if output, err := commandOutput(ctx, "bash", "-lc", `ss -ltnH '( sport = :443 )' 2>/dev/null || true`); err == nil {
+func (i *Installer) ensurePort443Available(ctx context.Context) error {
+	if output, err := commandOutput(ctx, "bash", "-lc", `ss -ltnpH '( sport = :443 )' 2>/dev/null || true`); err == nil {
 		trimmed := strings.TrimSpace(output)
 		if trimmed == "" {
 			return nil
 		}
-		return fmt.Errorf("tcp/443 is already in use:\n%s", trimmed)
+
+		lower := strings.ToLower(trimmed)
+		if strings.Contains(lower, "xray") {
+			fmt.Fprintln(i.stdout, "- 检测到 tcp/443 已由现有 xray 监听，继续执行覆盖安装。")
+			return nil
+		}
+
+		return fmt.Errorf("tcp/443 已被其他程序占用，请先释放该端口后再安装：\n%s", trimmed)
 	}
 
 	ln, err := net.Listen("tcp4", ":443")

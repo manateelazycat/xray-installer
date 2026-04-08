@@ -40,7 +40,7 @@ xray-installer
 
 它会自动：
 - 检查运行环境（root / Linux / systemd / Debian/Ubuntu/Arch Linux）
-- 校验域名 A 记录是否已经指向当前 VPS
+- 检查 443 端口是否可用（如果当前监听者就是 xray，则允许继续）
 - 安装 Xray
 - 生成 VLESS + Reality + Vision 服务端配置
 - 启动并启用 `xray` systemd 服务
@@ -53,7 +53,7 @@ xray-installer
 
 - 只支持 **Debian / Ubuntu / Arch Linux + systemd**
 - 需要在 **VPS 本机**运行
-- 域名 DNS 需要提前配好，并且能解析到当前 VPS
+- 域名 DNS 需要提前配好
 - 如果用了 Cloudflare，需要保证是 **DNS Only**
 
 ## 构建
