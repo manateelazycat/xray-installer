@@ -282,9 +282,7 @@ func (i *Installer) preflight(ctx context.Context, requireRoot bool) (string, er
 	if err != nil {
 		return "", err
 	}
-	if err := i.ensurePort443Available(ctx); err != nil {
-		return "", err
-	}
+	i.warnIfPort443InUse(ctx)
 
 	return publicIP, nil
 }
@@ -513,29 +511,29 @@ func detectPublicIPv4(ctx context.Context) (string, error) {
 	return "", errors.New("unable to detect public IPv4 from external services")
 }
 
-func (i *Installer) ensurePort443Available(ctx context.Context) error {
+func (i *Installer) warnIfPort443InUse(ctx context.Context) {
 	if output, err := commandOutput(ctx, "bash", "-lc", `ss -ltnpH '( sport = :443 )' 2>/dev/null || true`); err == nil {
 		trimmed := strings.TrimSpace(output)
 		if trimmed == "" {
-			return nil
+			return
 		}
 
 		lower := strings.ToLower(trimmed)
 		if strings.Contains(lower, "xray") {
-			fmt.Fprintln(i.stdout, "- 检测到 tcp/443 已由现有 xray 监听，继续执行覆盖安装。")
-			return nil
+			fmt.Fprintln(i.stdout, "- 提示：检测到 tcp/443 已由现有 xray 监听，将继续执行覆盖安装。")
+			return
 		}
 
-		return fmt.Errorf("tcp/443 已被其他程序占用，请先释放该端口后再安装：\n%s", trimmed)
+		fmt.Fprintf(i.stdout, "- 警告：检测到 tcp/443 已被其他程序占用，安装仍会继续，但最后启动 xray 时可能失败：\n%s\n", trimmed)
+		return
 	}
 
 	ln, err := net.Listen("tcp4", ":443")
 	if err == nil {
 		ln.Close()
-		return nil
+		return
 	}
-
-	return fmt.Errorf("tcp/443 is unavailable: %w", err)
+	fmt.Fprintf(i.stdout, "- 警告：无法在安装前确认 tcp/443 是否可用：%v\n", err)
 }
 
 func downloadInstallScript(ctx context.Context) (string, error) {

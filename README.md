@@ -40,7 +40,7 @@ xray-installer
 
 它会自动：
 - 检查运行环境（root / Linux / systemd / Debian/Ubuntu/Arch Linux）
-- 检查 443 端口是否可用（如果当前监听者就是 xray，则允许继续）
+- 检查 443 端口占用情况并给出提示（不再前置拦截安装）
 - 安装 Xray
 - 生成 VLESS + Reality + Vision 服务端配置
 - 启动并启用 `xray` systemd 服务
