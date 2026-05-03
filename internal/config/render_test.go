@@ -15,6 +15,7 @@ func sampleParameters() Parameters {
 		PrivateKey: "private-key",
 		PublicKey:  "public-key",
 		ShortID:    "0123456789abcdef",
+		PublicIP:   "1.2.3.4",
 		DestHost:   DefaultDestHost,
 		Port:       DefaultPort,
 	}
@@ -57,5 +58,13 @@ func TestRenderFlClash(t *testing.T) {
 
 	if string(data) != string(want) {
 		t.Fatalf("rendered flclash config mismatch.\n--- got ---\n%s\n--- want ---\n%s", string(data), string(want))
+	}
+
+	text := string(data)
+	if !strings.Contains(text, "server: 1.2.3.4") {
+		t.Fatalf("rendered flclash config should use public IP as server:\n%s", text)
+	}
+	if strings.Contains(text, "server: xx.example.com") {
+		t.Fatalf("rendered flclash config should not use domain as server:\n%s", text)
 	}
 }

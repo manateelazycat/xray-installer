@@ -57,7 +57,7 @@ func TestPrintSummaryIncludesFlClashCommand(t *testing.T) {
 	}
 }
 
-func TestPrintDryRunSummaryIncludesFlClashCommandHint(t *testing.T) {
+func TestPrintDryRunSummaryIncludesFlClashPreview(t *testing.T) {
 	t.Parallel()
 
 	var stdout bytes.Buffer
@@ -68,10 +68,16 @@ func TestPrintDryRunSummaryIncludesFlClashCommandHint(t *testing.T) {
 		PublicIP:        "1.2.3.4",
 		XrayConfigPath:  xrayConfigPath,
 		ProxyConfigPath: proxyConfigPath,
-	})
+	}, []byte("proxies:\n  - type: vless\n    server: 1.2.3.4\n"))
 
-	if !strings.Contains(stdout.String(), "sudo cat "+proxyConfigPath) {
-		t.Fatalf("dry-run summary missing flclash fetch command hint: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "--- proxy.yaml preview ---") {
+		t.Fatalf("dry-run summary missing flclash preview start marker: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "server: 1.2.3.4") {
+		t.Fatalf("dry-run summary missing flclash preview: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "--- end proxy.yaml preview ---") {
+		t.Fatalf("dry-run summary missing flclash preview end marker: %q", stdout.String())
 	}
 }
 

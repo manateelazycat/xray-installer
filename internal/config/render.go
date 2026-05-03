@@ -20,6 +20,7 @@ type Parameters struct {
 	PrivateKey string
 	PublicKey  string
 	ShortID    string
+	PublicIP   string
 	DestHost   string
 	Port       int
 }

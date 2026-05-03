@@ -78,7 +78,12 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 	nodeName := DefaultNodeName
 
 	i.step("运行安装前检查")
-	publicIP, err := i.preflight(ctx, !req.DryRun)
+	var publicIP string
+	if req.DryRun {
+		publicIP, err = detectPublicIPv4(ctx)
+	} else {
+		publicIP, err = i.preflight(ctx, true)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +120,7 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		PrivateKey: privateKey,
 		PublicKey:  publicKey,
 		ShortID:    shortID,
+		PublicIP:   publicIP,
 		DestHost:   config.DefaultDestHost,
 		Port:       config.DefaultPort,
 	}
@@ -149,7 +155,7 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		if err := i.validateDryRun(ctx, xrayConfig); err != nil {
 			return nil, err
 		}
-		i.printDryRunSummary(result)
+		i.printDryRunSummary(result, flClashConfig)
 		return result, nil
 	}
 
@@ -401,7 +407,7 @@ func (i *Installer) printSummary(result *Result) {
 	fmt.Fprintf(i.stdout, "\n获取 FlClash 配置命令：\n  sudo cat %s\n", result.ProxyConfigPath)
 }
 
-func (i *Installer) printDryRunSummary(result *Result) {
+func (i *Installer) printDryRunSummary(result *Result, flClashConfig []byte) {
 	fmt.Fprintln(i.stdout, "\nDry run 完成，未对系统做任何修改。")
 	fmt.Fprintf(i.stdout, "- domain: %s\n", result.Domain)
 	fmt.Fprintf(i.stdout, "- node name: %s\n", result.NodeName)
@@ -409,7 +415,12 @@ func (i *Installer) printDryRunSummary(result *Result) {
 	fmt.Fprintf(i.stdout, "- would write xray config to: %s\n", result.XrayConfigPath)
 	fmt.Fprintf(i.stdout, "- would write flclash config to: %s\n", result.ProxyConfigPath)
 	fmt.Fprintf(i.stdout, "- would save install record to: %s\n", metadataPath)
-	fmt.Fprintf(i.stdout, "\n实际安装完成后可用以下命令获取 FlClash 配置：\n  sudo cat %s\n", result.ProxyConfigPath)
+	fmt.Fprintf(i.stdout, "\n--- proxy.yaml preview ---\n%s", flClashConfig)
+	if len(flClashConfig) == 0 || flClashConfig[len(flClashConfig)-1] != '\n' {
+		fmt.Fprintln(i.stdout)
+	}
+	fmt.Fprintln(i.stdout, "--- end proxy.yaml preview ---")
+	fmt.Fprintf(i.stdout, "\nFlClash 配置预览已在上方输出。实际安装完成后可用以下命令获取配置文件：\n  sudo cat %s\n", result.ProxyConfigPath)
 }
 
 func normalizeDomain(input string) (string, error) {

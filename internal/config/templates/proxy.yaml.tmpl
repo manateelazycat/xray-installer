@@ -196,7 +196,7 @@ proxies:
 
   - name: {{ q .NodeName }}
     type: vless
-    server: {{ .Domain }}          # ←←← 改成你解析的子域名（或直接填 VPS IP）
+    server: {{ .PublicIP }}          # ←←← 改成你解析的子域名（或直接填 VPS IP）
     port: {{ .Port }}
     uuid: {{ q .UUID }}                   # ←←← 改成服务端生成的 UUID
     network: tcp

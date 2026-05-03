@@ -196,7 +196,7 @@ proxies:
 
   - name: "测试节点 \"A\""
     type: vless
-    server: xx.example.com          # ←←← 改成你解析的子域名（或直接填 VPS IP）
+    server: 1.2.3.4          # ←←← 改成你解析的子域名（或直接填 VPS IP）
     port: 443
     uuid: "12345678-1234-1234-1234-1234567890ab"                   # ←←← 改成服务端生成的 UUID
     network: tcp
