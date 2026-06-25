@@ -114,7 +114,7 @@ sniffer:
 tun:
   enable: true
   stack: gvisor
-  mtu: 9000
+  mtu: 1500
   dns-hijack:
     - "any:53"
     - "tcp://any:53"
