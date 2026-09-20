@@ -46,7 +46,6 @@ external-ui-url: "https://hub.mirrors.2020818.xyz/https://github.com/MetaCubeX/m
 
 # 匹配进程 always/strict/off
 find-process-mode: strict
-global-client-fingerprint: random
 keep-alive-idle: 600
 keep-alive-interval: 30
 
@@ -204,6 +203,7 @@ proxies:
     tls: true
     flow: xtls-rprx-vision
     servername: {{ .DestHost }}     # ←←← 和服务端 dest 保持一致
+    client-fingerprint: random
     reality-opts:
       public-key: {{ q .PublicKey }}     # ←←← 改成服务端 xray x25519 生成的 PublicKey
       short-id: {{ q .ShortID }}   # ←←← 和服务端 shortIds 保持一致
