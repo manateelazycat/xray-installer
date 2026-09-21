@@ -173,7 +173,10 @@ dns:
     - https://dns.google/dns-query#节点选择
     - https://dns.cloudflare.com/dns-query#节点选择
   nameserver-policy:
-    "+.heiyu.space,+.lan,+.local,+.localhost,+.home.arpa,geosite:private":
+    "+.heiyu.space":
+      - https://doh.pub/dns-query
+      - https://dns.alidns.com/dns-query
+    "+.lan,+.local,+.localhost,+.home.arpa,geosite:private":
       - system
     "+.googleapis.cn,+.googleapis.com,+.xn--ngstr-lra8j.com":
       - https://dns.google/dns-query#节点选择
@@ -228,6 +231,8 @@ proxy-groups:
   - {name: GLOBAL, type: select, include-all: true , proxies: [节点选择, 自建/家宽节点, 全部节点, 反重力, STEAM, 全球直连, 隐私拦截, Final, CK 自用订阅请勿分享外泄], exclude-filter: "(?i)(🟢 直连)", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/global.png"}
 
 rules:
+  - PROCESS-NAME,lzc-client-desktop,🟢 直连
+  - PROCESS-NAME,cdeplugin,🟢 直连
   - PROCESS-NAME,adb,全球直连
   - PROCESS-NAME,adb.exe,全球直连
   - PROCESS-NAME,懒猫微服,全球直连
