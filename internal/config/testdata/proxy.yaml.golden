@@ -122,7 +122,8 @@ tun:
   auto-route: true
   auto-redirect: true
   auto-detect-interface: true
-  strict-route: true
+  # Allow the Lazycat client to use its own IPv6 tunnel route.
+  strict-route: false
   route-exclude-address:
     - 6.6.6.6/32
     - 2000::6666/128
