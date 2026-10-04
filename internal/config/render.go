@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	DefaultDestHost = "www.microsoft.com"
+	DefaultDestHost = "www.bing.com"
 	DefaultPort     = 443
 )
 
