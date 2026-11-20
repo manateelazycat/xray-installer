@@ -22,6 +22,15 @@ type Parameters struct {
 	ShortID    string
 	DestHost   string
 	Port       int
+	Hysteria   HysteriaParameters
+}
+
+type HysteriaParameters struct {
+	NodeName    string
+	Password    string
+	Certificate string
+	Key         string
+	Fingerprint string
 }
 
 //go:embed templates/config.json.tmpl

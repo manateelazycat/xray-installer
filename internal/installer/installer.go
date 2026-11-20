@@ -14,17 +14,20 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"os/user"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"xray-installer/internal/config"
 )
 
 const (
-	DefaultNodeName = "[自建 1] 美国家宽-Reality"
+	DefaultNodeName  = "[自建 1] 美国家宽-Reality"
+	HysteriaNodeName = "[自建 1] 美国家宽-Hysteria2"
 
 	xrayBinary       = "/usr/local/bin/xray"
 	xrayConfigDir    = "/usr/local/etc/xray"
@@ -33,8 +36,9 @@ const (
 	proxyConfigPath  = "/usr/local/etc/xray-installer/proxy.yaml"
 	metadataPath     = "/usr/local/etc/xray-installer/install-result.json"
 	installScriptURL = "https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh"
+	installLockPath  = "/run/xray-installer.lock"
 
-	xrayConfigMode = 0o644
+	xrayConfigMode = 0o640
 	privateMode    = 0o600
 )
 
@@ -56,6 +60,8 @@ type Result struct {
 	NodeName        string    `json:"node_name"`
 	PublicIP        string    `json:"public_ip"`
 	Port            int       `json:"port"`
+	HysteriaNode    string    `json:"hysteria2_node_name"`
+	HysteriaPort    int       `json:"hysteria2_udp_port"`
 	UUID            string    `json:"uuid"`
 	PublicKey       string    `json:"public_key"`
 	ShortID         string    `json:"short_id"`
@@ -91,13 +97,19 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 	if req.DryRun {
 		i.step("Dry run：跳过 Xray 安装")
 	} else {
+		lock, err := lockInstallation()
+		if err != nil {
+			return nil, err
+		}
+		defer lock.Close()
+
 		i.step("安装 Xray")
 		if err := i.installXray(ctx); err != nil {
 			return nil, err
 		}
 	}
 
-	i.step("生成 Reality / VLESS 配置")
+	i.step("生成 VLESS / REALITY 和 Hysteria 2 配置")
 	uuid, err := newUUID()
 	if err != nil {
 		return nil, fmt.Errorf("generate uuid: %w", err)
@@ -113,6 +125,12 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		return nil, fmt.Errorf("generate short id: %w", err)
 	}
 
+	now := time.Now().UTC()
+	hysteria, err := newHysteriaParameters(domain, now)
+	if err != nil {
+		return nil, fmt.Errorf("generate Hysteria 2 credentials: %w", err)
+	}
+
 	params := config.Parameters{
 		Domain:     domain,
 		NodeName:   nodeName,
@@ -122,6 +140,7 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		ShortID:    shortID,
 		DestHost:   destHost,
 		Port:       config.DefaultPort,
+		Hysteria:   hysteria,
 	}
 
 	xrayConfig, err := config.RenderXray(params)
@@ -139,6 +158,8 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		NodeName:        nodeName,
 		PublicIP:        publicIP,
 		Port:            config.DefaultPort,
+		HysteriaNode:    hysteria.NodeName,
+		HysteriaPort:    config.DefaultPort,
 		UUID:            uuid,
 		PublicKey:       publicKey,
 		ShortID:         shortID,
@@ -146,7 +167,7 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		XrayConfigPath:  xrayConfigPath,
 		ProxyConfigPath: proxyConfigPath,
 		DryRun:          req.DryRun,
-		InstalledAt:     time.Now().UTC(),
+		InstalledAt:     now,
 	}
 
 	if req.DryRun {
@@ -169,26 +190,8 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		return nil, err
 	}
 
-	if _, err := backupIfExists(xrayConfigPath); err != nil {
-		return nil, err
-	}
-	if err := writeFileAtomic(xrayConfigPath, xrayConfig, xrayConfigMode); err != nil {
-		return nil, fmt.Errorf("write xray config: %w", err)
-	}
-
-	if _, err := backupIfExists(proxyConfigPath); err != nil {
-		return nil, err
-	}
-	if err := writeFileAtomic(proxyConfigPath, flClashConfig, privateMode); err != nil {
-		return nil, fmt.Errorf("write flclash config: %w", err)
-	}
-
-	i.step("启动并验证 Xray 服务")
-	if err := i.enableAndRestartXray(ctx); err != nil {
-		return nil, err
-	}
-
-	if _, err := backupIfExists(metadataPath); err != nil {
+	group, err := xrayConfigGroup(ctx)
+	if err != nil {
 		return nil, err
 	}
 	meta, err := json.MarshalIndent(result, "", "  ")
@@ -196,8 +199,30 @@ func (i *Installer) Run(ctx context.Context, req InstallRequest) (*Result, error
 		return nil, fmt.Errorf("marshal install result: %w", err)
 	}
 	meta = append(meta, '\n')
-	if err := writeFileAtomic(metadataPath, meta, privateMode); err != nil {
-		return nil, fmt.Errorf("write install result: %w", err)
+	files := []configurationFile{
+		{path: xrayConfigPath, data: xrayConfig, mode: xrayConfigMode, group: group},
+		{path: proxyConfigPath, data: flClashConfig, mode: privateMode, group: -1},
+		{path: metadataPath, data: meta, mode: privateMode, group: -1},
+	}
+	_, statusErr := commandOutput(ctx, "systemctl", "is-active", "xray")
+	err = replaceConfiguration(files, func() error {
+		i.step("启动并验证 Xray 服务")
+		return i.enableAndRestartXray(ctx)
+	}, func() error {
+		action := "stop"
+		if statusErr == nil {
+			action = "restart"
+		}
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		output, err := commandOutput(rollbackCtx, "systemctl", action, "xray")
+		if err != nil {
+			return fmt.Errorf("restore xray service: %w\n%s", err, strings.TrimSpace(output))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	i.printSummary(result)
@@ -210,6 +235,13 @@ func (i *Installer) Uninstall(ctx context.Context, dryRun bool) error {
 	}
 	if !dryRun && os.Geteuid() != 0 {
 		return errors.New("please run uninstall as root")
+	}
+	if !dryRun {
+		lock, err := lockInstallation()
+		if err != nil {
+			return err
+		}
+		defer lock.Close()
 	}
 
 	i.step("检查卸载目标")
@@ -286,7 +318,8 @@ func (i *Installer) preflight(ctx context.Context, requireRoot bool) (string, er
 	if err != nil {
 		return "", err
 	}
-	i.warnIfPort443InUse(ctx)
+	i.warnIfPortInUse(ctx, "tcp", "-ltnpH")
+	i.warnIfPortInUse(ctx, "udp", "-lunpH")
 
 	return publicIP, nil
 }
@@ -298,7 +331,7 @@ func (i *Installer) installXray(ctx context.Context) error {
 	}
 	defer os.Remove(scriptPath)
 
-	cmd := exec.CommandContext(ctx, "bash", scriptPath, "install")
+	cmd := exec.CommandContext(ctx, "bash", scriptPath, "install", "--manually-restart-later")
 	cmd.Stdout = i.stdout
 	cmd.Stderr = i.stderr
 	if err := cmd.Run(); err != nil {
@@ -369,22 +402,63 @@ func (i *Installer) validateXrayConfig(ctx context.Context, configBytes []byte) 
 }
 
 func (i *Installer) enableAndRestartXray(ctx context.Context) error {
-	for _, args := range [][]string{{"daemon-reload"}, {"enable", "xray"}, {"restart", "xray"}} {
+	for _, args := range [][]string{{"daemon-reload"}, {"restart", "xray"}} {
 		if output, err := commandOutput(ctx, "systemctl", args...); err != nil {
 			return fmt.Errorf("systemctl %s failed: %w\n%s", strings.Join(args, " "), err, strings.TrimSpace(output))
 		}
 	}
 
-	status, err := commandOutput(ctx, "systemctl", "is-active", "xray")
-	if err != nil {
+	if err := waitForXrayListeners(ctx); err != nil {
 		logs, _ := commandOutput(ctx, "journalctl", "-u", "xray", "-n", "50", "--no-pager")
-		return fmt.Errorf("xray service is not active: %w\n%s\n%s", err, strings.TrimSpace(status), strings.TrimSpace(logs))
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(logs))
 	}
-	if strings.TrimSpace(status) != "active" {
+	if status, err := commandOutput(ctx, "systemctl", "is-active", "xray"); err != nil || strings.TrimSpace(status) != "active" {
 		logs, _ := commandOutput(ctx, "journalctl", "-u", "xray", "-n", "50", "--no-pager")
-		return fmt.Errorf("xray service status is %q\n%s", strings.TrimSpace(status), strings.TrimSpace(logs))
+		return fmt.Errorf("xray service status is %q: %v\n%s", strings.TrimSpace(status), err, strings.TrimSpace(logs))
+	}
+	if output, err := commandOutput(ctx, "systemctl", "enable", "xray"); err != nil {
+		return fmt.Errorf("systemctl enable xray failed: %w\n%s", err, strings.TrimSpace(output))
 	}
 	return nil
+}
+
+func waitForXrayListeners(ctx context.Context) error {
+	if _, err := exec.LookPath("ss"); err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	portFilter := fmt.Sprintf("( sport = :%d )", config.DefaultPort)
+
+	for {
+		pid, err := commandOutput(ctx, "systemctl", "show", "--property=MainPID", "--value", "xray")
+		if err != nil {
+			return fmt.Errorf("read xray PID: %w", err)
+		}
+		listeners, err := commandOutput(ctx, "ss", "-ltnupH", portFilter)
+		if err != nil {
+			return fmt.Errorf("inspect xray listeners: %w", err)
+		}
+		owner := "pid=" + strings.TrimSpace(pid) + ","
+		var tcp, udp bool
+		for line := range strings.SplitSeq(listeners, "\n") {
+			if strings.Contains(line, owner) {
+				tcp = tcp || strings.HasPrefix(line, "tcp ")
+				udp = udp || strings.HasPrefix(line, "udp ")
+			}
+		}
+		if tcp && udp {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("xray did not listen on both TCP and UDP %d: %w", config.DefaultPort, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (i *Installer) step(message string) {
@@ -397,7 +471,8 @@ func (i *Installer) printSummary(result *Result) {
 	fmt.Fprintf(i.stdout, "- dest host: %s\n", result.DestHost)
 	fmt.Fprintf(i.stdout, "- node name: %s\n", result.NodeName)
 	fmt.Fprintf(i.stdout, "- public ip: %s\n", result.PublicIP)
-	fmt.Fprintf(i.stdout, "- port: %d\n", result.Port)
+	fmt.Fprintf(i.stdout, "- VLESS / REALITY: TCP %d\n", result.Port)
+	fmt.Fprintf(i.stdout, "- Hysteria 2: UDP %d (%s)\n", result.HysteriaPort, result.HysteriaNode)
 	fmt.Fprintf(i.stdout, "- uuid: %s\n", result.UUID)
 	fmt.Fprintf(i.stdout, "- public key: %s\n", result.PublicKey)
 	fmt.Fprintf(i.stdout, "- short id: %s\n", result.ShortID)
@@ -413,6 +488,8 @@ func (i *Installer) printDryRunSummary(result *Result) {
 	fmt.Fprintf(i.stdout, "- dest host: %s\n", result.DestHost)
 	fmt.Fprintf(i.stdout, "- node name: %s\n", result.NodeName)
 	fmt.Fprintf(i.stdout, "- public ip: %s\n", result.PublicIP)
+	fmt.Fprintf(i.stdout, "- VLESS / REALITY: TCP %d\n", result.Port)
+	fmt.Fprintf(i.stdout, "- Hysteria 2: UDP %d (%s)\n", result.HysteriaPort, result.HysteriaNode)
 	fmt.Fprintf(i.stdout, "- would write xray config to: %s\n", result.XrayConfigPath)
 	fmt.Fprintf(i.stdout, "- would write flclash config to: %s\n", result.ProxyConfigPath)
 	fmt.Fprintf(i.stdout, "- would save install record to: %s\n", metadataPath)
@@ -515,29 +592,80 @@ func detectPublicIPv4(ctx context.Context) (string, error) {
 	return "", errors.New("unable to detect public IPv4 from external services")
 }
 
-func (i *Installer) warnIfPort443InUse(ctx context.Context) {
-	if output, err := commandOutput(ctx, "bash", "-lc", `ss -ltnpH '( sport = :443 )' 2>/dev/null || true`); err == nil {
-		trimmed := strings.TrimSpace(output)
-		if trimmed == "" {
-			return
-		}
-
-		lower := strings.ToLower(trimmed)
-		if strings.Contains(lower, "xray") {
-			fmt.Fprintln(i.stdout, "- 提示：检测到 tcp/443 已由现有 xray 监听，将继续执行覆盖安装。")
-			return
-		}
-
-		fmt.Fprintf(i.stdout, "- 警告：检测到 tcp/443 已被其他程序占用，安装仍会继续，但最后启动 xray 时可能失败：\n%s\n", trimmed)
+func (i *Installer) warnIfPortInUse(ctx context.Context, network, ssFlags string) {
+	port := config.DefaultPort
+	output, err := commandOutput(ctx, "ss", ssFlags, fmt.Sprintf("( sport = :%d )", port))
+	if err != nil {
+		fmt.Fprintf(i.stdout, "- 警告：无法检查 %s/%d 是否可用：%v\n", network, port, err)
 		return
 	}
-
-	ln, err := net.Listen("tcp4", ":443")
-	if err == nil {
-		ln.Close()
+	listeners := strings.TrimSpace(output)
+	if listeners == "" {
 		return
 	}
-	fmt.Fprintf(i.stdout, "- 警告：无法在安装前确认 tcp/443 是否可用：%v\n", err)
+	for _, listener := range strings.Split(listeners, "\n") {
+		if !strings.Contains(listener, `(("xray",`) {
+			fmt.Fprintf(i.stdout, "- 警告：%s/%d 存在其他监听程序，可能导致 Xray 启动失败：\n%s\n", network, port, listeners)
+			return
+		}
+	}
+	fmt.Fprintf(i.stdout, "- 提示：%s/%d 已由现有 Xray 监听，将继续覆盖安装。\n", network, port)
+}
+
+func lockInstallation() (*os.File, error) {
+	lock, err := os.OpenFile(installLockPath, os.O_CREATE|os.O_RDWR, privateMode)
+	if err != nil {
+		return nil, fmt.Errorf("open installer lock: %w", err)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lock.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, errors.New("an Xray install or uninstall is already running")
+		}
+		return nil, fmt.Errorf("lock installer: %w", err)
+	}
+	return lock, nil
+}
+
+func xrayConfigGroup(ctx context.Context) (int, error) {
+	output, err := commandOutput(ctx, "systemctl", "show", "--property=User,Group", "xray.service")
+	if err != nil {
+		return 0, fmt.Errorf("read xray service credentials: %w\n%s", err, strings.TrimSpace(output))
+	}
+
+	var serviceUser, serviceGroup string
+	for line := range strings.SplitSeq(output, "\n") {
+		key, value, _ := strings.Cut(line, "=")
+		switch key {
+		case "User":
+			serviceUser = value
+		case "Group":
+			serviceGroup = value
+		}
+	}
+	if serviceGroup != "" {
+		if gid, err := strconv.Atoi(serviceGroup); err == nil && gid >= 0 {
+			return gid, nil
+		}
+		group, err := user.LookupGroup(serviceGroup)
+		if err != nil {
+			return 0, fmt.Errorf("look up xray service group: %w", err)
+		}
+		return strconv.Atoi(group.Gid)
+	}
+	if serviceUser == "" || serviceUser == "root" || serviceUser == "0" {
+		return 0, nil
+	}
+
+	lookup := user.Lookup
+	if _, err := strconv.Atoi(serviceUser); err == nil {
+		lookup = user.LookupId
+	}
+	account, err := lookup(serviceUser)
+	if err != nil {
+		return 0, fmt.Errorf("look up xray service user: %w", err)
+	}
+	return strconv.Atoi(account.Gid)
 }
 
 func downloadInstallScript(ctx context.Context) (string, error) {
@@ -606,49 +734,6 @@ func commandOutput(ctx context.Context, name string, args ...string) (string, er
 	cmd := exec.CommandContext(ctx, name, args...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
-}
-
-func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
-}
-
-func backupIfExists(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", fmt.Errorf("read existing file %s: %w", path, err)
-	}
-
-	backupPath := fmt.Sprintf("%s.bak.%s", path, time.Now().UTC().Format("20060102T150405Z"))
-	mode := os.FileMode(0o600)
-	if stat, err := os.Stat(path); err == nil {
-		mode = stat.Mode().Perm()
-	}
-	if err := os.WriteFile(backupPath, data, mode); err != nil {
-		return "", fmt.Errorf("write backup file %s: %w", backupPath, err)
-	}
-	return backupPath, nil
 }
 
 func pathExists(path string) bool {

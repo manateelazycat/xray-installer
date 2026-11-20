@@ -8,7 +8,7 @@ Include_all: &Include_all {type: select, proxies: [节点选择, 全部节点, �
 Urltest_Base: &Urltest_Base {type: url-test, include-all: true, tolerance: 20, interval: 300, max-failed-times: 1, hidden: true}
 
 ##############################################
-# 机场订阅（已删除 proxy-providers，目前只使用手动自建 Hysteria2 节点）
+# 节点由安装器生成
 
 # 用于下载订阅时指定UA
 global-ua: clash.meta
@@ -46,7 +46,6 @@ external-ui-url: "https://hub.mirrors.2020818.xyz/https://github.com/MetaCubeX/m
 
 # 匹配进程 always/strict/off
 find-process-mode: strict
-global-client-fingerprint: random
 keep-alive-idle: 600
 keep-alive-interval: 30
 
@@ -215,15 +214,34 @@ proxies:
       support-x25519mlkem768: true
     skip-cert-verify: false
 
+  - name: "测试节点 Hysteria2"
+    type: hysteria2
+    server: "xx.example.com"
+    port: 443
+    password: "hysteria-password"
+    sni: "xx.example.com"
+    fingerprint: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    skip-cert-verify: false
+
 # 策略组
 proxy-groups:
-  - {name: 节点选择, type: select, proxies: [自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/select.png"}
-  - {name: 自建/家宽节点, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
+  - {name: 节点选择, type: select, proxies: [自动切换, 自建/家宽节点, 全部节点, CK 自用订阅请勿分享外泄], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/select.png"}
+  - name: 自动切换
+    type: fallback
+    proxies:
+      - "测试节点 \"A\""
+      - "测试节点 Hysteria2"
+    url: https://cp.cloudflare.com/generate_204
+    expected-status: 204
+    interval: 30
+    timeout: 5000
+    lazy: false
+  - {name: 自建/家宽节点, type: select, proxies: [自动切换], include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
   - {name: STEAM,type: select, <<: *Proxy_first, icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/steam.png"}
   - {name: 全球直连, type: select, proxies: [🟢 直连, 🔗 代理], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/direct.png"}
   - {name: 隐私拦截, type: select, proxies: [🚫 拒绝, ⚪ 丢弃 ,🟢 直连, 🔗 代理], icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/block.png"}
   - {name: Final, type: select, <<: *Include_all,  icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/final.png"}
-  - {name: 反重力, type: select, include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
+  - {name: 反重力, type: select, proxies: [自动切换], include-all: true, filter: "(?=.*(?i)(自建|CF|The_house|private|home|家宽|hgc|HKT|HKBN|icable|Hinet|att))", exclude-filter: "(?=.*(?i)(机场|Seattle))", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/private_node.png"}
   - {name: 全部节点, type: select, include-all: true, tolerance: 20, interval: 300, exclude-filter: "(?i)(🟢 直连)", icon: "https://pub-8feead0908f649a8b94397f152fb9cba.r2.dev/all.png"}
 # 功能型代理组默认隐藏 start
   - {name: 🔗 代理, type: select, hidden: true, proxies: [节点选择]}

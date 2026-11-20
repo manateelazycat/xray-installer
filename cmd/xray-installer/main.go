@@ -167,7 +167,7 @@ func readLine(reader *bufio.Reader) (string, error) {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, `xray-installer - 在 VPS 本机交互式安装 Xray Reality 并生成 FlClash 配置
+	fmt.Fprintf(w, `xray-installer - 在 VPS 部署 Xray REALITY 和 Hysteria 2，并生成 FlClash / Clash Meta 配置
 
 用法:
   xray-installer [--dry-run]
@@ -177,8 +177,8 @@ func printUsage(w io.Writer) {
 
 说明:
   1. 启动安装后询问 VPS 绑定域名和 Reality 伪装目标域名
-  2. FlClash 节点名称固定使用博客长模板中的默认值
-  3. 然后自动安装 Xray、生成配置并启动服务
+  2. 生成 REALITY 主用和 Hysteria 2 备用节点
+  3. 自动部署 TCP 443 和 UDP 443，客户端默认使用「自动切换」策略组
 
 命令:
   uninstall    卸载 Xray，并删除 xray-installer 生成的文件
@@ -188,7 +188,8 @@ func printUsage(w io.Writer) {
   --version    输出版本信息
   -h, --help   输出帮助
 
-默认节点名称:
+节点名称:
+  %s
   %s
 
 示例:
@@ -196,7 +197,7 @@ func printUsage(w io.Writer) {
   xray-installer --dry-run
   xray-installer --version
   sudo xray-installer uninstall
-`, installer.DefaultNodeName)
+`, installer.DefaultNodeName, installer.HysteriaNodeName)
 }
 
 func printVersion(w io.Writer) {

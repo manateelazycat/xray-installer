@@ -6,7 +6,7 @@
 - VPS 绑定的域名
 - Reality 伪装目标域名（直接回车默认 `www.bing.com`）
 
-FlClash 节点名称固定为博客长模板中的 `[自建 1] 美国家宽-Reality`，然后自动继续安装。
+安装器在同一个 VPS 上部署 VLESS + REALITY + Vision（TCP 443）和 Hysteria 2（UDP 443），并生成可导入 FlClash 和使用 Mihomo（Clash Meta）内核的 Clash 客户端的 `proxy.yaml`。
 
 ## 一键安装并立即执行
 
@@ -40,16 +40,23 @@ xray-installer
 
 它会自动：
 - 检查运行环境（root / Linux / systemd / Debian/Ubuntu/Arch Linux）
-- 检查 443 端口占用情况并给出提示（不再前置拦截安装）
+- 检查 TCP 和 UDP 443 端口占用情况并给出提示
 - 安装 Xray
-- 生成 VLESS + Reality + Vision 服务端配置
+- 生成 VLESS + REALITY + Vision 和 Hysteria 2 服务端配置
 - 启动并启用 `xray` systemd 服务
-- 生成文章同款长版 FlClash 配置 `proxy.yaml`
+- 生成带「自动切换」故障转移组的长版客户端配置 `proxy.yaml`
 - 支持 `uninstall`
 - 支持 `--dry-run`
 - 支持 GitHub Release 二进制一键安装脚本 `install.sh`
 
 生成的 FlClash 配置默认启用 `reality-opts.support-x25519mlkem768: true`，用于兼容新版 Xray 的 REALITY 握手要求。
+
+## TCP 与 UDP 自动切换
+
+- 在 VPS 防火墙和云安全组分别放行 **TCP 443** 和 **UDP 443**。两个节点使用同一个 VPS 域名。
+- 在 FlClash 或 Mihomo（Clash Meta）客户端导入 `proxy.yaml`，在「节点选择」中使用「自动切换」。新导入的配置默认优先选这个策略。已有配置保存过手动选项时，导入后请确认当前选项。旧版原版 Clash 缺少所需协议支持。
+- 「自动切换」优先使用 REALITY；健康检查判定它不可用后，新连接会走仍然可用的 Hysteria 2 节点。健康检查每 30 秒运行，已中断的连接需要重连。
+- 安装器生成 Hysteria 2 的密码和五年有效期的自签名证书。客户端通过 SHA-256 指纹验证证书，无需申请公网证书。重新安装会生成新凭据，需要重新导入客户端配置。
 
 ## 当前边界
 

@@ -28,6 +28,31 @@
           "shortIds": [{{ q .ShortID }}]
         }
       }
+    },
+    {
+      "tag": "hysteria2",
+      "port": {{ .Port }},
+      "protocol": "hysteria",
+      "settings": {
+        "version": 2,
+        "users": [{"auth": {{ q .Hysteria.Password }}}]
+      },
+      "streamSettings": {
+        "network": "hysteria",
+        "security": "tls",
+        "tlsSettings": {
+          "alpn": ["h3"],
+          "certificates": [
+            {
+              "certificate": [{{ q .Hysteria.Certificate }}],
+              "key": [{{ q .Hysteria.Key }}]
+            }
+          ]
+        },
+        "hysteriaSettings": {
+          "version": 2
+        }
+      }
     }
   ],
   "outbounds": [

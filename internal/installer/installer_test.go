@@ -2,10 +2,16 @@ package installer
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"xray-installer/internal/config"
 )
@@ -82,7 +88,7 @@ func TestWriteFileAtomicUsesRequestedMode(t *testing.T) {
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, "config.json")
-	if err := writeFileAtomic(target, []byte(`{"ok":true}`), xrayConfigMode); err != nil {
+	if err := writeFileAtomic(target, []byte(`{"ok":true}`), xrayConfigMode, -1, -1); err != nil {
 		t.Fatalf("writeFileAtomic returned error: %v", err)
 	}
 
@@ -92,6 +98,63 @@ func TestWriteFileAtomicUsesRequestedMode(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != xrayConfigMode {
 		t.Fatalf("file mode = %o, want %o", got, xrayConfigMode)
+	}
+}
+
+func TestReplaceConfigurationRollsBackAfterActivationFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	serverPath := filepath.Join(dir, "config.json")
+	clientPath := filepath.Join(dir, "proxy.yaml")
+	if err := os.WriteFile(serverPath, []byte("old server"), xrayConfigMode); err != nil {
+		t.Fatal(err)
+	}
+
+	startErr := errors.New("simulated failure to start Xray")
+	restoredService := false
+	err := replaceConfiguration([]configurationFile{
+		{path: serverPath, data: []byte("new server"), mode: xrayConfigMode, group: -1},
+		{path: clientPath, data: []byte("new client"), mode: privateMode, group: -1},
+	}, func() error {
+		return startErr
+	}, func() error {
+		restoredService = true
+		return nil
+	})
+	if !errors.Is(err, startErr) || !restoredService {
+		t.Fatalf("replaceConfiguration returned %v, restored service = %v", err, restoredService)
+	}
+	data, err := os.ReadFile(serverPath)
+	if err != nil || string(data) != "old server" {
+		t.Fatalf("server config was not restored: %q, %v", data, err)
+	}
+	if _, err := os.Stat(clientPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("new client config should be removed, stat returned %v", err)
+	}
+}
+
+func TestHysteriaCertificateMatchesClientFingerprint(t *testing.T) {
+	t.Parallel()
+
+	const domain = "vps.example.net"
+	now := time.Now().UTC()
+	params, err := newHysteriaParameters(domain, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.X509KeyPair([]byte(params.Certificate), []byte(params.Key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(pair.Certificate[0])
+	if got := hex.EncodeToString(hash[:]); got != params.Fingerprint {
+		t.Fatal("the client fingerprint does not identify the server TLS certificate")
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(pair.Leaf)
+	if _, err := pair.Leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: domain, CurrentTime: now}); err != nil {
+		t.Fatalf("verify certificate for %s: %v", domain, err)
 	}
 }
 
